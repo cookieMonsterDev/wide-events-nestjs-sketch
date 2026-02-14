@@ -110,49 +110,6 @@ describe('RedisService', () => {
     });
   });
 
-  describe('has', () => {
-    it('should return true when key exists', async () => {
-      mockRedisClient.get.mockResolvedValue('value');
-
-      const result = await service.has('test-key');
-
-      expect(result).toBe(true);
-      expect(mockRedisClient.get).toHaveBeenCalledWith('test-key');
-    });
-
-    it('should return false when key does not exist', async () => {
-      mockRedisClient.get.mockResolvedValue(null);
-
-      const result = await service.has('test-key');
-
-      expect(result).toBe(false);
-    });
-
-    it('should return false when client is disabled', async () => {
-      (service as any).isClientEnabled = false;
-
-      const result = await service.has('test-key');
-
-      expect(result).toBe(false);
-      expect(mockRedisClient.get).not.toHaveBeenCalled();
-    });
-
-    it('should return false and disable client on error', async () => {
-      const error = new Error('Connection failed');
-      mockRedisClient.get.mockRejectedValue(error);
-
-      const loggerSpy = jest.spyOn(Logger.prototype, 'warn');
-
-      const result = await service.has('test-key');
-
-      expect(result).toBe(false);
-      expect((service as any).isClientEnabled).toBe(false);
-      expect(loggerSpy).toHaveBeenCalledWith(
-        `Redis has() failed for key test-key: ${error.message}`,
-      );
-    });
-  });
-
   describe('get', () => {
     it('should return value when key exists', async () => {
       const value = 'test-value';
@@ -283,11 +240,11 @@ describe('RedisService', () => {
     });
   });
 
-  describe('delete', () => {
+  describe('del', () => {
     it('should delete single key', async () => {
       mockRedisClient.del.mockResolvedValue(1);
 
-      await service.delete('test-key');
+      await service.del('test-key');
 
       expect(mockRedisClient.del).toHaveBeenCalledWith('test-key');
     });
@@ -295,7 +252,7 @@ describe('RedisService', () => {
     it('should delete multiple keys', async () => {
       mockRedisClient.del.mockResolvedValue(2);
 
-      await service.delete(['key1', 'key2']);
+      await service.del(['key1', 'key2']);
 
       expect(mockRedisClient.del).toHaveBeenCalledWith('key1', 'key2');
     });
@@ -303,7 +260,7 @@ describe('RedisService', () => {
     it('should not delete when client is disabled', async () => {
       (service as any).isClientEnabled = false;
 
-      await service.delete('test-key');
+      await service.del('test-key');
 
       expect(mockRedisClient.del).not.toHaveBeenCalled();
     });
@@ -314,11 +271,11 @@ describe('RedisService', () => {
 
       const loggerSpy = jest.spyOn(Logger.prototype, 'warn');
 
-      await service.delete('test-key');
+      await service.del('test-key');
 
       expect((service as any).isClientEnabled).toBe(false);
       expect(loggerSpy).toHaveBeenCalledWith(
-        `Redis delete() failed for key(s): ${error.message}`,
+        `Redis del() failed for key(s): ${error.message}`,
       );
     });
   });

@@ -1,6 +1,6 @@
 import { Value } from './redis.types';
 import { ConfigService } from '@nestjs/config';
-import { Redis, RedisKey, RedisOptions } from 'ioredis';
+import { Redis, RedisKey, RedisOptions, ChainableCommander } from 'ioredis';
 import { Logger, Injectable, OnModuleDestroy } from '@nestjs/common';
 
 @Injectable()
@@ -19,19 +19,6 @@ export class RedisService implements OnModuleDestroy {
 
   getClient(): Redis {
     return this.client;
-  }
-
-  async has(key: RedisKey): Promise<boolean> {
-    if (!this.isClientEnabled) return false;
-
-    try {
-      return !!(await this.client.get(key));
-    } catch (error) {
-      this.logger.warn(`Redis has() failed for key ${key}: ${error.message}`);
-      this.isClientEnabled = false;
-
-      return false;
-    }
   }
 
   async get(key: RedisKey): Promise<string | null> {
@@ -79,7 +66,7 @@ export class RedisService implements OnModuleDestroy {
     }
   }
 
-  async delete(key: RedisKey | RedisKey[]): Promise<void> {
+  async del(key: RedisKey | RedisKey[]): Promise<void> {
     if (!this.isClientEnabled) return;
 
     try {
@@ -87,11 +74,127 @@ export class RedisService implements OnModuleDestroy {
 
       await this.client.del(...keys);
     } catch (error) {
-      this.logger.warn(`Redis delete() failed for key(s): ${error.message}`);
+      this.logger.warn(`Redis del() failed for key(s): ${error.message}`);
 
       this.isClientEnabled = false;
 
       return;
+    }
+  }
+
+  async publish(channel: string, message: string): Promise<number> {
+    if (!this.isClientEnabled) return 0;
+
+    try {
+      return await this.client.publish(channel, message);
+    } catch (error) {
+      this.logger.warn(
+        `Redis publish() failed for channel ${channel}: ${error.message}`,
+      );
+      this.isClientEnabled = false;
+      return 0;
+    }
+  }
+
+  async sadd(key: RedisKey, ...members: (string | number)[]): Promise<number> {
+    if (!this.isClientEnabled) return 0;
+
+    try {
+      return await this.client.sadd(key, ...members);
+    } catch (error) {
+      this.logger.warn(`Redis sadd() failed for key ${key}: ${error.message}`);
+      this.isClientEnabled = false;
+      return 0;
+    }
+  }
+
+  async srem(key: RedisKey, ...members: (string | number)[]): Promise<number> {
+    if (!this.isClientEnabled) return 0;
+
+    try {
+      return await this.client.srem(key, ...members);
+    } catch (error) {
+      this.logger.warn(`Redis srem() failed for key ${key}: ${error.message}`);
+      this.isClientEnabled = false;
+      return 0;
+    }
+  }
+
+  async smembers(key: RedisKey): Promise<string[]> {
+    if (!this.isClientEnabled) return [];
+
+    try {
+      return await this.client.smembers(key);
+    } catch (error) {
+      this.logger.warn(
+        `Redis smembers() failed for key ${key}: ${error.message}`,
+      );
+      this.isClientEnabled = false;
+      return [];
+    }
+  }
+
+  async sismember(key: RedisKey, member: string | number): Promise<boolean> {
+    if (!this.isClientEnabled) return false;
+
+    try {
+      return !!(await this.client.sismember(key, member));
+    } catch (error) {
+      this.logger.warn(
+        `Redis sismember() failed for key ${key}: ${error.message}`,
+      );
+      this.isClientEnabled = false;
+      return false;
+    }
+  }
+
+  async exists(key: RedisKey | RedisKey[]): Promise<number> {
+    if (!this.isClientEnabled) return 0;
+
+    try {
+      const keys = Array.isArray(key) ? key : [key];
+      return await this.client.exists(...keys);
+    } catch (error) {
+      this.logger.warn(`Redis exists() failed for key(s): ${error.message}`);
+      this.isClientEnabled = false;
+      return 0;
+    }
+  }
+
+  async expire(key: RedisKey, seconds: number): Promise<boolean> {
+    if (!this.isClientEnabled) return false;
+
+    try {
+      return !!(await this.client.expire(key, seconds));
+    } catch (error) {
+      this.logger.warn(
+        `Redis expire() failed for key ${key}: ${error.message}`,
+      );
+      this.isClientEnabled = false;
+      return false;
+    }
+  }
+
+  pipeline(): ChainableCommander {
+    if (!this.isClientEnabled) {
+      this.logger.warn('Redis pipeline() called but client is disabled');
+    }
+
+    return this.client.pipeline();
+  }
+
+  // For test files only
+  async keys(pattern: string): Promise<string[]> {
+    if (!this.isClientEnabled) return [];
+
+    try {
+      return await this.client.keys(pattern);
+    } catch (error) {
+      this.logger.warn(
+        `Redis keys() failed for pattern ${pattern}: ${error.message}`,
+      );
+      this.isClientEnabled = false;
+      return [];
     }
   }
 
