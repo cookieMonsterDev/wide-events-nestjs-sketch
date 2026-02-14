@@ -17,6 +17,10 @@ export class RedisService implements OnModuleDestroy {
     this.registerListeners();
   }
 
+  getClient(): Redis {
+    return this.client;
+  }
+
   async has(key: RedisKey): Promise<boolean> {
     if (!this.isClientEnabled) return false;
 
