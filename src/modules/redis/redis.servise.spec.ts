@@ -86,7 +86,7 @@ describe('RedisService', () => {
   describe('constructor', () => {
     it('should create Redis client with correct options', () => {
       expect(Redis).toHaveBeenCalled();
-      const callArgs = (Redis as jest.Mock).mock.calls[0][0];
+      const callArgs = (Redis as unknown as jest.Mock).mock.calls[0][0];
       expect(callArgs).toMatchObject({
         autoResubscribe: true,
         enableOfflineQueue: true,
