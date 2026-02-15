@@ -8,7 +8,7 @@ export class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
 
   constructor(private readonly configService: ConfigService) {
-    const options = this.getOptions();
+    const options = this.getClientOptions();
 
     this.client = this.createProxyClient(options);
 
@@ -16,12 +16,9 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    try {
-      await this.client.quit();
-    } catch (error) {
-      this.logger.warn(`Redis quit() failed: ${error.message}`);
-      this.forceDisconnect();
-    }
+    const result = await this.client.quit();
+
+    if (result === null) this.client.disconnect();
   }
 
   private createProxyClient(options: RedisOptions): Redis {
@@ -45,16 +42,6 @@ export class RedisService implements OnModuleDestroy {
         };
       },
     });
-  }
-
-  private forceDisconnect(): void {
-    try {
-      this.client.disconnect();
-    } catch (disconnectError) {
-      this.logger.error(
-        `Redis disconnect() also failed: ${disconnectError.message}`,
-      );
-    }
   }
 
   private registerListeners(): void {
@@ -104,7 +91,7 @@ export class RedisService implements OnModuleDestroy {
     return false;
   }
 
-  private getOptions(): RedisOptions {
+  private getClientOptions(): RedisOptions {
     return {
       autoResubscribe: true,
       enableOfflineQueue: true,

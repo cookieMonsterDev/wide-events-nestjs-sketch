@@ -8,8 +8,8 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Reflector } from '@nestjs/core';
 import { RedisService } from '../redis.servise';
-import { InvalidateCache } from '../decorators/invalidate-cache.decorator';
-import { InvalidateCacheOptions } from '../redis.types';
+import { RedisCacheInvalidate } from '../decorators/redis-cache-invalidate.decorator';
+import { RedisCacheInvalidateOptions } from '../redis.types';
 
 @Injectable()
 export class RedisCacheInvalidateInterceptor implements NestInterceptor {
@@ -22,7 +22,10 @@ export class RedisCacheInvalidateInterceptor implements NestInterceptor {
     context: ExecutionContext,
     next: CallHandler,
   ): Promise<Observable<any>> {
-    const options = this.reflector.get(InvalidateCache, context.getHandler());
+    const options = this.reflector.get(
+      RedisCacheInvalidate,
+      context.getHandler(),
+    );
 
     if (!options) return next.handle();
 
@@ -33,7 +36,7 @@ export class RedisCacheInvalidateInterceptor implements NestInterceptor {
 
   private async invalidateCache(
     context: ExecutionContext,
-    options: InvalidateCacheOptions,
+    options: RedisCacheInvalidateOptions,
   ): Promise<void> {
     const args = context.getArgs();
     const className = context.getClass().name;

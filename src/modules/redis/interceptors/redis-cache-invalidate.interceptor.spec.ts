@@ -1,23 +1,32 @@
+import { of } from 'rxjs';
+import { Reflector } from '@nestjs/core';
+import { RedisService } from '../redis.servise';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { of } from 'rxjs';
+import { RedisCacheInvalidate } from '../decorators/redis-cache-invalidate.decorator';
 import { RedisCacheInvalidateInterceptor } from './redis-cache-invalidate.interceptor';
-import { RedisService } from '../redis.servise';
-import { InvalidateCache } from '../decorators/invalidate-cache.decorator';
 
 describe('RedisCacheInvalidateInterceptor', () => {
   let interceptor: RedisCacheInvalidateInterceptor;
-  let redisService: jest.Mocked<RedisService>;
+  let redisService: RedisService & {
+    client: {
+      del: jest.MockedFunction<any>;
+      keys: jest.MockedFunction<any>;
+    };
+  };
   let reflector: Reflector;
   let mockExecutionContext: jest.Mocked<ExecutionContext>;
   let mockCallHandler: jest.Mocked<CallHandler>;
 
   beforeEach(async () => {
-    const mockRedisService = {
+    const mockRedisClient = {
       del: jest.fn(),
       keys: jest.fn(),
     };
+
+    const mockRedisService = {
+      client: mockRedisClient,
+    } as unknown as RedisService;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -33,7 +42,12 @@ describe('RedisCacheInvalidateInterceptor', () => {
     interceptor = module.get<RedisCacheInvalidateInterceptor>(
       RedisCacheInvalidateInterceptor,
     );
-    redisService = module.get(RedisService);
+    redisService = module.get(RedisService) as RedisService & {
+      client: {
+        del: jest.MockedFunction<any>;
+        keys: jest.MockedFunction<any>;
+      };
+    };
     reflector = module.get<Reflector>(Reflector);
 
     // Setup mock execution context
@@ -54,7 +68,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
   });
 
   describe('intercept', () => {
-    it('should return next handler when no InvalidateCache decorator is present', async () => {
+    it('should return next handler when no RedisCacheInvalidate decorator is present', async () => {
       jest.spyOn(reflector, 'get').mockReturnValue(undefined);
       const data = { result: 'data' };
       mockCallHandler.handle.mockReturnValue(of(data));
@@ -65,12 +79,12 @@ describe('RedisCacheInvalidateInterceptor', () => {
       );
 
       expect(reflector.get).toHaveBeenCalledWith(
-        InvalidateCache,
+        RedisCacheInvalidate,
         mockExecutionContext.getHandler(),
       );
       expect(mockCallHandler.handle).toHaveBeenCalled();
-      expect(redisService.del).not.toHaveBeenCalled();
-      expect(redisService.keys).not.toHaveBeenCalled();
+      expect(redisService.client.del).not.toHaveBeenCalled();
+      expect(redisService.client.keys).not.toHaveBeenCalled();
 
       // Verify the observable returns data
       const values: any[] = [];
@@ -78,15 +92,17 @@ describe('RedisCacheInvalidateInterceptor', () => {
       expect(values).toEqual([data]);
     });
 
-    it('should invalidate cache with string key', async () => {
-      const key = 'cache:UserService:getUser:["123"]';
-      jest.spyOn(reflector, 'get').mockReturnValue({ keys: key });
+    it('should invalidate default exact key when no options provided', async () => {
+      jest.spyOn(reflector, 'get').mockReturnValue({});
       const data = { result: 'data' };
       mockCallHandler.handle.mockReturnValue(of(data));
-      mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
-      mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.del.mockResolvedValue(undefined);
+      mockExecutionContext.getHandler.mockReturnValue(function handler() {});
+      mockExecutionContext.getClass.mockReturnValue({
+        name: 'UserService',
+      } as any);
+      const args = ['123'];
+      mockExecutionContext.getArgs.mockReturnValue(args);
+      redisService.client.del.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -98,105 +114,9 @@ describe('RedisCacheInvalidateInterceptor', () => {
         result.subscribe({
           complete: () => {
             setTimeout(() => {
-              expect(redisService.del).toHaveBeenCalledWith(key);
-              expect(redisService.keys).not.toHaveBeenCalled();
-              resolve();
-            }, 10);
-          },
-        });
-      });
-    });
-
-    it('should invalidate cache with array of keys', async () => {
-      const keys = [
-        'cache:UserService:getUser:["123"]',
-        'cache:UserService:getUser:["456"]',
-      ];
-      jest.spyOn(reflector, 'get').mockReturnValue({ keys });
-      const data = { result: 'data' };
-      mockCallHandler.handle.mockReturnValue(of(data));
-      mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
-      mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.del.mockResolvedValue(undefined);
-
-      const result = await interceptor.intercept(
-        mockExecutionContext,
-        mockCallHandler,
-      );
-
-      await new Promise<void>((resolve) => {
-        result.subscribe({
-          complete: () => {
-            setTimeout(() => {
-              expect(redisService.del).toHaveBeenCalledWith(keys);
-              expect(redisService.keys).not.toHaveBeenCalled();
-              resolve();
-            }, 10);
-          },
-        });
-      });
-    });
-
-    it('should invalidate cache with function key', async () => {
-      const keyFunction = jest
-        .fn()
-        .mockReturnValue('cache:UserService:getUser:["123"]');
-      jest.spyOn(reflector, 'get').mockReturnValue({ keys: keyFunction });
-      const data = { result: 'data' };
-      mockCallHandler.handle.mockReturnValue(of(data));
-      const args = ['123'];
-      mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
-      mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.del.mockResolvedValue(undefined);
-
-      const result = await interceptor.intercept(
-        mockExecutionContext,
-        mockCallHandler,
-      );
-
-      await new Promise<void>((resolve) => {
-        result.subscribe({
-          complete: () => {
-            setTimeout(() => {
-              expect(keyFunction).toHaveBeenCalledWith(...args);
-              expect(redisService.del).toHaveBeenCalledWith(
-                'cache:UserService:getUser:["123"]',
-              );
-              resolve();
-            }, 10);
-          },
-        });
-      });
-    });
-
-    it('should invalidate cache with function key returning array', async () => {
-      const keys = [
-        'cache:UserService:getUser:["123"]',
-        'cache:UserService:getUser:["456"]',
-      ];
-      const keyFunction = jest.fn().mockReturnValue(keys);
-      jest.spyOn(reflector, 'get').mockReturnValue({ keys: keyFunction });
-      const data = { result: 'data' };
-      mockCallHandler.handle.mockReturnValue(of(data));
-      const args = ['123', '456'];
-      mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
-      mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.del.mockResolvedValue(undefined);
-
-      const result = await interceptor.intercept(
-        mockExecutionContext,
-        mockCallHandler,
-      );
-
-      await new Promise<void>((resolve) => {
-        result.subscribe({
-          complete: () => {
-            setTimeout(() => {
-              expect(keyFunction).toHaveBeenCalledWith(...args);
-              expect(redisService.del).toHaveBeenCalledWith(keys);
+              const expectedKey = `cache:UserService:handler:${JSON.stringify(args)}`;
+              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
+              expect(redisService.client.keys).not.toHaveBeenCalled();
               resolve();
             }, 10);
           },
@@ -214,10 +134,12 @@ describe('RedisCacheInvalidateInterceptor', () => {
       const data = { result: 'data' };
       mockCallHandler.handle.mockReturnValue(of(data));
       mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
+      mockExecutionContext.getClass.mockReturnValue({
+        name: 'UserService',
+      } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.keys.mockResolvedValue(matchingKeys);
-      redisService.del.mockResolvedValue(undefined);
+      redisService.client.keys.mockResolvedValue(matchingKeys);
+      redisService.client.del.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -228,8 +150,10 @@ describe('RedisCacheInvalidateInterceptor', () => {
         result.subscribe({
           complete: () => {
             setTimeout(() => {
-              expect(redisService.keys).toHaveBeenCalledWith(pattern);
-              expect(redisService.del).toHaveBeenCalledWith(matchingKeys);
+              expect(redisService.client.keys).toHaveBeenCalledWith(pattern);
+              expect(redisService.client.del).toHaveBeenCalledWith(
+                matchingKeys,
+              );
               resolve();
             }, 10);
           },
@@ -249,10 +173,12 @@ describe('RedisCacheInvalidateInterceptor', () => {
       mockCallHandler.handle.mockReturnValue(of(data));
       const args = ['123'];
       mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
+      mockExecutionContext.getClass.mockReturnValue({
+        name: 'UserService',
+      } as any);
       mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.keys.mockResolvedValue(matchingKeys);
-      redisService.del.mockResolvedValue(undefined);
+      redisService.client.keys.mockResolvedValue(matchingKeys);
+      redisService.client.del.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -264,10 +190,12 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               expect(patternFunction).toHaveBeenCalledWith(...args);
-              expect(redisService.keys).toHaveBeenCalledWith(
+              expect(redisService.client.keys).toHaveBeenCalledWith(
                 'cache:UserService:getUser:*',
               );
-              expect(redisService.del).toHaveBeenCalledWith(matchingKeys);
+              expect(redisService.client.del).toHaveBeenCalledWith(
+                matchingKeys,
+              );
               resolve();
             }, 10);
           },
@@ -281,9 +209,11 @@ describe('RedisCacheInvalidateInterceptor', () => {
       const data = { result: 'data' };
       mockCallHandler.handle.mockReturnValue(of(data));
       mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
+      mockExecutionContext.getClass.mockReturnValue({
+        name: 'UserService',
+      } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.keys.mockResolvedValue([]);
+      redisService.client.keys.mockResolvedValue([]);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -294,8 +224,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
         result.subscribe({
           complete: () => {
             setTimeout(() => {
-              expect(redisService.keys).toHaveBeenCalledWith(pattern);
-              expect(redisService.del).not.toHaveBeenCalled();
+              expect(redisService.client.keys).toHaveBeenCalledWith(pattern);
+              expect(redisService.client.del).not.toHaveBeenCalled();
               resolve();
             }, 10);
           },
@@ -313,7 +243,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
       } as any);
       const args = [{ id: '123' }];
       mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.del.mockResolvedValue(undefined);
+      redisService.client.del.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -325,8 +255,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               const expectedKey = `cache:TestController:handler:${JSON.stringify(args)}`;
-              expect(redisService.del).toHaveBeenCalledWith(expectedKey);
-              expect(redisService.keys).not.toHaveBeenCalled();
+              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
+              expect(redisService.client.keys).not.toHaveBeenCalled();
               resolve();
             }, 10);
           },
@@ -334,17 +264,19 @@ describe('RedisCacheInvalidateInterceptor', () => {
       });
     });
 
-    it('should prioritize keys option over pattern option', async () => {
-      const key = 'cache:UserService:getUser:["123"]';
-      jest
-        .spyOn(reflector, 'get')
-        .mockReturnValue({ keys: key, pattern: 'cache:UserService:*' });
+    it('should use pattern when provided', async () => {
+      const pattern = 'cache:UserService:*';
+      const matchingKeys = ['cache:UserService:getUser:["123"]'];
+      jest.spyOn(reflector, 'get').mockReturnValue({ pattern });
       const data = { result: 'data' };
       mockCallHandler.handle.mockReturnValue(of(data));
       mockExecutionContext.getHandler.mockReturnValue(() => {});
-      mockExecutionContext.getClass.mockReturnValue({ name: 'UserService' } as any);
+      mockExecutionContext.getClass.mockReturnValue({
+        name: 'UserService',
+      } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.del.mockResolvedValue(undefined);
+      redisService.client.keys.mockResolvedValue(matchingKeys);
+      redisService.client.del.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -355,8 +287,10 @@ describe('RedisCacheInvalidateInterceptor', () => {
         result.subscribe({
           complete: () => {
             setTimeout(() => {
-              expect(redisService.del).toHaveBeenCalledWith(key);
-              expect(redisService.keys).not.toHaveBeenCalled();
+              expect(redisService.client.keys).toHaveBeenCalledWith(pattern);
+              expect(redisService.client.del).toHaveBeenCalledWith(
+                matchingKeys,
+              );
               resolve();
             }, 10);
           },
@@ -373,7 +307,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
         name: 'TestController',
       } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.del.mockResolvedValue(undefined);
+      redisService.client.del.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -385,7 +319,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               const expectedKey = `cache:TestController:handler:[]`;
-              expect(redisService.del).toHaveBeenCalledWith(expectedKey);
+              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
               resolve();
             }, 10);
           },
@@ -406,7 +340,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
         ['array', 'values'],
       ];
       mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.del.mockResolvedValue(undefined);
+      redisService.client.del.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -418,7 +352,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               const expectedKey = `cache:TestController:handler:${JSON.stringify(args)}`;
-              expect(redisService.del).toHaveBeenCalledWith(expectedKey);
+              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
               resolve();
             }, 10);
           },

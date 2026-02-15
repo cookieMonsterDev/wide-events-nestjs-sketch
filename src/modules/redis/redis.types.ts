@@ -3,6 +3,6 @@ export type RedisCacheOptions = {
   key?: (...args: any[]) => string;
 };
 
-export type InvalidateCacheOptions = {
+export type RedisCacheInvalidateOptions = {
   pattern?: string | ((...args: any[]) => string);
 };
