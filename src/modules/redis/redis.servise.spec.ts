@@ -115,7 +115,7 @@ describe('RedisService', () => {
       const value = 'test-value';
       mockRedisClient.get.mockResolvedValue(value);
 
-      const result = await service.get('test-key');
+      const result = await service.client.get('test-key');
 
       expect(result).toBe(value);
       expect(mockRedisClient.get).toHaveBeenCalledWith('test-key');

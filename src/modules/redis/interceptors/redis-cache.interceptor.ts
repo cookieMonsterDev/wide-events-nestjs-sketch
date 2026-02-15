@@ -31,20 +31,11 @@ export class RedisCacheInterceptor implements NestInterceptor {
     const className = context.getClass().name;
     const handlerName = context.getHandler().name;
 
-    let key: string;
-    if (options.key) {
-      if (typeof options.key === 'string') {
-        key = options.key;
-      } else if (typeof options.key === 'function') {
-        key = options.key(...args);
-      } else {
-        key = `cache:${className}:${handlerName}:${argsString}`;
-      }
-    } else {
-      key = `cache:${className}:${handlerName}:${argsString}`;
-    }
+    const key = options.key
+      ? options.key(...args)
+      : `cache:${className}:${handlerName}:${argsString}`;
 
-    const cachedData = await this.redisService.get(key);
+    const cachedData = await this.redisService.client.get(key);
 
     if (cachedData) {
       const parsed = this.parseJson(cachedData);
@@ -65,11 +56,11 @@ export class RedisCacheInterceptor implements NestInterceptor {
     const value = JSON.stringify(data);
 
     if (ttl) {
-      await this.redisService.setWithExpiration(key, value, ttl);
+      await this.redisService.client.set(key, value, 'PX', ttl);
       return;
     }
 
-    await this.redisService.set(key, value);
+    await this.redisService.client.set(key, value, 'PX', 10000);
   }
 
   private parseJson(value: string): any | null {
