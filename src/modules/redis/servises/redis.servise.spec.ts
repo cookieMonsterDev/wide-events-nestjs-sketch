@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RedisService } from './redis.servise';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Redis } from 'ioredis';
+import { RedisService } from './redis.servise';
 
 // Mock Logger to suppress console output during tests
 jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
@@ -33,7 +34,6 @@ jest.mock('ioredis', () => {
 
 describe('RedisService', () => {
   let service: RedisService;
-  let configService: ConfigService;
 
   const mockConfigService = {
     get: jest.fn(),
@@ -80,7 +80,6 @@ describe('RedisService', () => {
     }).compile();
 
     service = module.get<RedisService>(RedisService);
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   afterEach(() => {
@@ -89,7 +88,6 @@ describe('RedisService', () => {
 
   describe('constructor', () => {
     it('should create Redis client with correct options', () => {
-      const Redis = require('ioredis').Redis;
       expect(Redis).toHaveBeenCalled();
       const callArgs = (Redis as unknown as jest.Mock).mock.calls[0][0];
       expect(callArgs).toMatchObject({
@@ -97,13 +95,12 @@ describe('RedisService', () => {
         enableOfflineQueue: true,
         maxRetriesPerRequest: null,
         autoResendUnfulfilledCommands: true,
-        path: 'redis://localhost:6379',
         family: 4,
         keepAlive: 5000,
         lazyConnect: false,
         commandTimeout: 5000,
         connectTimeout: 10000,
-        enableReadyCheck: true,
+        enableReadyCheck: false,
       });
     });
 

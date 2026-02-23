@@ -1,7 +1,8 @@
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { RedisService } from './redis.servise';
 import { Global, Module } from '@nestjs/common';
+import { RedisService } from './servises/redis.servise';
+import { RedisCacheService } from './servises/redis-cache.servise';
 import { RedisCacheInterceptor } from './interceptors/redis-cache.interceptor';
 import { RedisCacheInvalidateInterceptor } from './interceptors/redis-cache-invalidate.interceptor';
 
@@ -10,6 +11,7 @@ import { RedisCacheInvalidateInterceptor } from './interceptors/redis-cache-inva
   imports: [ConfigModule],
   providers: [
     RedisService,
+    RedisCacheService,
     {
       provide: APP_INTERCEPTOR,
       useClass: RedisCacheInterceptor,
@@ -19,6 +21,6 @@ import { RedisCacheInvalidateInterceptor } from './interceptors/redis-cache-inva
       useClass: RedisCacheInvalidateInterceptor,
     },
   ],
-  exports: [RedisService],
+  exports: [RedisService, RedisCacheService],
 })
 export class RedisModule {}

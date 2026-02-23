@@ -7,14 +7,14 @@ import {
 import { tap } from 'rxjs/operators';
 import { Observable, from } from 'rxjs';
 import { Reflector } from '@nestjs/core';
-import { RedisService } from '../redis.servise';
+import { RedisCacheService } from '../servises/redis-cache.servise';
 import { RedisCache } from '../decorators/redis-cache.decorator';
 
 @Injectable()
 export class RedisCacheInterceptor implements NestInterceptor {
   constructor(
     private readonly reflector: Reflector,
-    private readonly redisService: RedisService,
+    private readonly redisCacheService: RedisCacheService,
   ) {}
 
   async intercept(
@@ -35,39 +35,14 @@ export class RedisCacheInterceptor implements NestInterceptor {
       ? options.key(...args)
       : `cache:${className}:${handlerName}:${argsString}`;
 
-    const cachedData = await this.redisService.client.get(key);
+    const cachedData = await this.redisCacheService.get(key);
 
-    if (cachedData) {
-      const parsed = this.parseJson(cachedData);
-
-      if (parsed !== null) return from([parsed]);
-    }
+    if (cachedData !== null) return from([cachedData]);
 
     return next
       .handle()
-      .pipe(tap(async (data) => this.cacheResult(key, data, options.ttl)));
-  }
-
-  private async cacheResult(
-    key: string,
-    data: any,
-    ttl?: number,
-  ): Promise<void> {
-    const value = JSON.stringify(data);
-
-    if (ttl) {
-      await this.redisService.client.set(key, value, 'PX', ttl);
-      return;
-    }
-
-    await this.redisService.client.set(key, value, 'PX', 10000);
-  }
-
-  private parseJson(value: string): any | null {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return null;
-    }
+      .pipe(
+        tap(async (data) => this.redisCacheService.set(key, data, options.ttl)),
+      );
   }
 }

@@ -1,8 +1,8 @@
 import { of } from 'rxjs';
 import { Reflector } from '@nestjs/core';
-import { RedisService } from '../redis.servise';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
+import { RedisService } from '../servises/redis.servise';
 import { RedisCacheInvalidate } from '../decorators/redis-cache-invalidate.decorator';
 import { RedisCacheInvalidateInterceptor } from './redis-cache-invalidate.interceptor';
 

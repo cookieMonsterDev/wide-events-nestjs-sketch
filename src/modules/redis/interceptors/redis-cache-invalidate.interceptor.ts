@@ -7,7 +7,7 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Reflector } from '@nestjs/core';
-import { RedisService } from '../redis.servise';
+import { RedisService } from '../servises/redis.servise';
 import { RedisCacheInvalidate } from '../decorators/redis-cache-invalidate.decorator';
 import { RedisCacheInvalidateOptions } from '../redis.types';
 

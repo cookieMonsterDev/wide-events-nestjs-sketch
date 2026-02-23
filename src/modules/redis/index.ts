@@ -1,6 +1,9 @@
 export * from './redis.types';
 export * from './redis.module';
-export * from './redis.servise';
+
+// Servises
+export * from './servises/redis.servise';
+export * from './servises/redis-cache.servise';
 
 // Decorators
 export * from './decorators/redis-cache.decorator';
