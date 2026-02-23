@@ -2,38 +2,34 @@ import { of } from 'rxjs';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
-import { RedisService } from '../servises/redis.servise';
+import { RedisCacheService } from '../servises/redis-cache.servise';
 import { RedisCacheInvalidate } from '../decorators/redis-cache-invalidate.decorator';
 import { RedisCacheInvalidateInterceptor } from './redis-cache-invalidate.interceptor';
 
 describe('RedisCacheInvalidateInterceptor', () => {
   let interceptor: RedisCacheInvalidateInterceptor;
-  let redisService: RedisService & {
-    client: {
-      del: jest.MockedFunction<any>;
-      keys: jest.MockedFunction<any>;
-    };
+  let redisCacheService: {
+    delete: jest.MockedFunction<any>;
+    deleteMany: jest.MockedFunction<any>;
+    scanKeys: jest.MockedFunction<any>;
   };
   let reflector: Reflector;
   let mockExecutionContext: jest.Mocked<ExecutionContext>;
   let mockCallHandler: jest.Mocked<CallHandler>;
 
   beforeEach(async () => {
-    const mockRedisClient = {
-      del: jest.fn(),
-      keys: jest.fn(),
+    const mockRedisCacheService = {
+      delete: jest.fn(),
+      deleteMany: jest.fn(),
+      scanKeys: jest.fn(),
     };
-
-    const mockRedisService = {
-      client: mockRedisClient,
-    } as unknown as RedisService;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RedisCacheInvalidateInterceptor,
         {
-          provide: RedisService,
-          useValue: mockRedisService,
+          provide: RedisCacheService,
+          useValue: mockRedisCacheService,
         },
         Reflector,
       ],
@@ -42,12 +38,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
     interceptor = module.get<RedisCacheInvalidateInterceptor>(
       RedisCacheInvalidateInterceptor,
     );
-    redisService = module.get(RedisService) as RedisService & {
-      client: {
-        del: jest.MockedFunction<any>;
-        keys: jest.MockedFunction<any>;
-      };
-    };
+    redisCacheService = module.get(RedisCacheService);
     reflector = module.get<Reflector>(Reflector);
 
     // Setup mock execution context
@@ -83,8 +74,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
         mockExecutionContext.getHandler(),
       );
       expect(mockCallHandler.handle).toHaveBeenCalled();
-      expect(redisService.client.del).not.toHaveBeenCalled();
-      expect(redisService.client.keys).not.toHaveBeenCalled();
+      expect(redisCacheService.delete).not.toHaveBeenCalled();
+      expect(redisCacheService.scanKeys).not.toHaveBeenCalled();
 
       // Verify the observable returns data
       const values: any[] = [];
@@ -102,7 +93,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
       } as any);
       const args = ['123'];
       mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.client.del.mockResolvedValue(undefined);
+      redisCacheService.delete.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -115,8 +106,10 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               const expectedKey = `cache:UserService:handler:${JSON.stringify(args)}`;
-              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
-              expect(redisService.client.keys).not.toHaveBeenCalled();
+              expect(redisCacheService.delete).toHaveBeenCalledWith(
+                expectedKey,
+              );
+              expect(redisCacheService.scanKeys).not.toHaveBeenCalled();
               resolve();
             }, 10);
           },
@@ -138,8 +131,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
         name: 'UserService',
       } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.client.keys.mockResolvedValue(matchingKeys);
-      redisService.client.del.mockResolvedValue(undefined);
+      redisCacheService.scanKeys.mockResolvedValue(matchingKeys);
+      redisCacheService.deleteMany.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -150,8 +143,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
         result.subscribe({
           complete: () => {
             setTimeout(() => {
-              expect(redisService.client.keys).toHaveBeenCalledWith(pattern);
-              expect(redisService.client.del).toHaveBeenCalledWith(
+              expect(redisCacheService.scanKeys).toHaveBeenCalledWith(pattern);
+              expect(redisCacheService.deleteMany).toHaveBeenCalledWith(
                 matchingKeys,
               );
               resolve();
@@ -177,8 +170,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
         name: 'UserService',
       } as any);
       mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.client.keys.mockResolvedValue(matchingKeys);
-      redisService.client.del.mockResolvedValue(undefined);
+      redisCacheService.scanKeys.mockResolvedValue(matchingKeys);
+      redisCacheService.deleteMany.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -190,10 +183,10 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               expect(patternFunction).toHaveBeenCalledWith(...args);
-              expect(redisService.client.keys).toHaveBeenCalledWith(
+              expect(redisCacheService.scanKeys).toHaveBeenCalledWith(
                 'cache:UserService:getUser:*',
               );
-              expect(redisService.client.del).toHaveBeenCalledWith(
+              expect(redisCacheService.deleteMany).toHaveBeenCalledWith(
                 matchingKeys,
               );
               resolve();
@@ -213,7 +206,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
         name: 'UserService',
       } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.client.keys.mockResolvedValue([]);
+      redisCacheService.scanKeys.mockResolvedValue([]);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -224,8 +217,9 @@ describe('RedisCacheInvalidateInterceptor', () => {
         result.subscribe({
           complete: () => {
             setTimeout(() => {
-              expect(redisService.client.keys).toHaveBeenCalledWith(pattern);
-              expect(redisService.client.del).not.toHaveBeenCalled();
+              expect(redisCacheService.scanKeys).toHaveBeenCalledWith(pattern);
+              expect(redisCacheService.delete).not.toHaveBeenCalled();
+              expect(redisCacheService.deleteMany).not.toHaveBeenCalled();
               resolve();
             }, 10);
           },
@@ -243,7 +237,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
       } as any);
       const args = [{ id: '123' }];
       mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.client.del.mockResolvedValue(undefined);
+      redisCacheService.delete.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -255,8 +249,10 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               const expectedKey = `cache:TestController:handler:${JSON.stringify(args)}`;
-              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
-              expect(redisService.client.keys).not.toHaveBeenCalled();
+              expect(redisCacheService.delete).toHaveBeenCalledWith(
+                expectedKey,
+              );
+              expect(redisCacheService.scanKeys).not.toHaveBeenCalled();
               resolve();
             }, 10);
           },
@@ -275,8 +271,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
         name: 'UserService',
       } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.client.keys.mockResolvedValue(matchingKeys);
-      redisService.client.del.mockResolvedValue(undefined);
+      redisCacheService.scanKeys.mockResolvedValue(matchingKeys);
+      redisCacheService.deleteMany.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -287,8 +283,8 @@ describe('RedisCacheInvalidateInterceptor', () => {
         result.subscribe({
           complete: () => {
             setTimeout(() => {
-              expect(redisService.client.keys).toHaveBeenCalledWith(pattern);
-              expect(redisService.client.del).toHaveBeenCalledWith(
+              expect(redisCacheService.scanKeys).toHaveBeenCalledWith(pattern);
+              expect(redisCacheService.deleteMany).toHaveBeenCalledWith(
                 matchingKeys,
               );
               resolve();
@@ -307,7 +303,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
         name: 'TestController',
       } as any);
       mockExecutionContext.getArgs.mockReturnValue([]);
-      redisService.client.del.mockResolvedValue(undefined);
+      redisCacheService.delete.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -319,7 +315,9 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               const expectedKey = `cache:TestController:handler:[]`;
-              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
+              expect(redisCacheService.delete).toHaveBeenCalledWith(
+                expectedKey,
+              );
               resolve();
             }, 10);
           },
@@ -340,7 +338,7 @@ describe('RedisCacheInvalidateInterceptor', () => {
         ['array', 'values'],
       ];
       mockExecutionContext.getArgs.mockReturnValue(args);
-      redisService.client.del.mockResolvedValue(undefined);
+      redisCacheService.delete.mockResolvedValue(undefined);
 
       const result = await interceptor.intercept(
         mockExecutionContext,
@@ -352,7 +350,9 @@ describe('RedisCacheInvalidateInterceptor', () => {
           complete: () => {
             setTimeout(() => {
               const expectedKey = `cache:TestController:handler:${JSON.stringify(args)}`;
-              expect(redisService.client.del).toHaveBeenCalledWith(expectedKey);
+              expect(redisCacheService.delete).toHaveBeenCalledWith(
+                expectedKey,
+              );
               resolve();
             }, 10);
           },

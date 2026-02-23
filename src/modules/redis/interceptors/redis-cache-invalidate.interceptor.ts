@@ -7,7 +7,7 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { Reflector } from '@nestjs/core';
-import { RedisService } from '../servises/redis.servise';
+import { RedisCacheService } from '../servises/redis-cache.servise';
 import { RedisCacheInvalidate } from '../decorators/redis-cache-invalidate.decorator';
 import { RedisCacheInvalidateOptions } from '../redis.types';
 
@@ -15,7 +15,7 @@ import { RedisCacheInvalidateOptions } from '../redis.types';
 export class RedisCacheInvalidateInterceptor implements NestInterceptor {
   constructor(
     private readonly reflector: Reflector,
-    private readonly redisService: RedisService,
+    private readonly redisCacheService: RedisCacheService,
   ) {}
 
   async intercept(
@@ -48,9 +48,9 @@ export class RedisCacheInvalidateInterceptor implements NestInterceptor {
           ? options.pattern(...args)
           : options.pattern;
 
-      const keys = await this.redisService.client.keys(pattern);
+      const keys = await this.redisCacheService.scanKeys(pattern);
 
-      if (keys.length > 0) await this.redisService.client.del(keys);
+      if (keys.length > 0) await this.redisCacheService.deleteMany(keys);
 
       return;
     }
@@ -59,6 +59,6 @@ export class RedisCacheInvalidateInterceptor implements NestInterceptor {
 
     const exactKey = `cache:${className}:${handlerName}:${argsString}`;
 
-    await this.redisService.client.del(exactKey);
+    await this.redisCacheService.delete(exactKey);
   }
 }

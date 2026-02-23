@@ -1,7 +1,13 @@
 export const REDIS_CACHE_TTL = 86400;
 
+export enum CacheStoreType {
+  SET = 'set',
+  VALUE = 'value',
+}
+
 export type RedisCacheOptions = {
   ttl?: number;
+  type?: CacheStoreType;
   key?: (...args: any[]) => string;
 };
 

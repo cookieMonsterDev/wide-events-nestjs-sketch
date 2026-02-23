@@ -69,7 +69,7 @@ export class RedisService implements OnModuleDestroy {
 
           const errorStatuses = ['end', 'close', 'reconnecting'];
 
-          if (errorStatuses.includes[status]) return null;
+          if (errorStatuses.includes(status)) return null;
 
           try {
             const result = original.apply(target, args);
@@ -81,7 +81,7 @@ export class RedisService implements OnModuleDestroy {
               error instanceof Error ? error.message : String(error);
 
             if (
-              errorStatuses.includes[status] ||
+              errorStatuses.includes(status) ||
               errorMessage.includes('Connection is closed')
             )
               return null;

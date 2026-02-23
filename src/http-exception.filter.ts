@@ -14,21 +14,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   catch(exception: HttpException, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
-    const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
 
     const body = exception.getResponse();
     const statusCode = exception.getStatus();
 
-    const headers = { ...response.getHeaders() };
+    console.log(body)
 
-    request.scope.response = {
-      statusCode,
-      headers,
-      body,
-    } satisfies ResponseLogDto;
 
-    this.logger.logWideEvent(request.scope);
 
     response.status(statusCode).json(body);
   }
